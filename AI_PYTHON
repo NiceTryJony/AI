@@ -1,0 +1,103 @@
+import cv2
+import tensorflow as tf
+import numpy as np
+from tkinter import Tk, Label, Button, Entry, StringVar
+from PIL import Image, ImageTk
+import time
+
+# --- Загрузка модели ---
+model = tf.keras.applications.MobileNetV2(weights="imagenet")
+
+# Функция для предсказания объекта
+def predict_object(frame):
+    # Преобразуем изображение для модели
+    img = cv2.resize(frame, (224, 224))
+    img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    img = np.expand_dims(img, axis=0)
+    
+    # Предсказание
+    predictions = model.predict(img)
+    decoded = tf.keras.applications.mobilenet_v2.decode_predictions(predictions, top=5)
+    return decoded[0]
+
+# --- Интерфейс ---
+class ObjectDetectionApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Object Detection")
+        
+        # Поле для ввода объекта
+        self.label_entry = Label(root, text="Искать объект:")
+        self.label_entry.pack()
+        self.object_name = StringVar()
+        self.entry = Entry(root, textvariable=self.object_name)
+        self.entry.pack()
+
+        # Кнопка для запуска
+        self.start_button = Button(root, text="Начать", command=self.start_detection)
+        self.start_button.pack()
+
+        # Кнопка для остановки
+        self.stop_button = Button(root, text="Остановить", command=self.stop_detection)
+        self.stop_button.pack()
+
+        # Видео
+        self.video_label = Label(root)
+        self.video_label.pack()
+
+        # Сообщение
+        self.message_label = Label(root, text="Сообщения будут здесь.")
+        self.message_label.pack()
+
+        # Флаги
+        self.running = False
+        self.cap = None
+
+    def start_detection(self):
+        self.running = True
+        self.cap = cv2.VideoCapture(0)
+        self.detect()
+
+    def stop_detection(self):
+        self.running = False
+        if self.cap:
+            self.cap.release()
+        self.video_label.config(image="")
+
+    def detect(self):
+        if not self.running:
+            return
+
+        ret, frame = self.cap.read()
+        if not ret:
+            self.stop_detection()
+            return
+
+        # Конвертация изображения для интерфейса
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+        imgtk = ImageTk.PhotoImage(image=img)
+        self.video_label.imgtk = imgtk
+        self.video_label.configure(image=imgtk)
+
+        # Распознавание объектов
+        results = predict_object(frame)
+        for obj in results:
+            if self.object_name.get().lower() in obj[1].lower():
+                self.message_label.config(text=f"Найден объект: {obj[1]} ({obj[2]*100:.2f}%)")
+                
+                # Сохранение скриншота
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                cv2.imwrite(f"screenshot_{timestamp}.png", frame)
+                break
+        else:
+            self.message_label.config(text="Объект не найден.")
+
+        # Продолжить цикл
+        self.root.after(10, self.detect)
+
+
+# --- Запуск приложения ---
+root = Tk()
+app = ObjectDetectionApp(root)
+root.mainloop()
