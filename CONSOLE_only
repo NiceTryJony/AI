@@ -1,0 +1,67 @@
+import cv2
+import torch
+import os
+import time
+
+# Загрузка модели YOLOv5
+print("Загружается модель YOLOv5... Подождите.")
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)  # YOLOv5 small
+print("Модель загружена.")
+
+# --- Основной код ---
+def main():
+    # Получаем список объектов для поиска
+    object_names = input("Введите названия объектов через запятую (на английском, например: person, dog, car): ")
+    object_names = [name.strip().lower() for name in object_names.split(",")]
+
+    # Проверяем, создана ли папка для сохранения скриншотов
+    output_dir = "screenshots"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Запуск камеры
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Не удалось открыть камеру.")
+        return
+
+    print(f"Ищем объекты: {', '.join(object_names)}. Нажмите 'q' для выхода.")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Не удалось захватить изображение.")
+            break
+
+        # Запускаем YOLOv5 для детекции объектов
+        results = model(frame)
+
+        # Получаем результаты детекции
+        detections = results.pandas().xyxy[0]  # Данные в формате Pandas
+        for _, detection in detections.iterrows():
+            label = detection['name'].lower()
+            confidence = detection['confidence']
+            if label in object_names:
+                print(f"Обнаружен объект: {label} ({confidence*100:.2f}%)")
+
+                # Сохранение изображения с найденным объектом
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                filename = os.path.join(output_dir, f"{label}_{timestamp}.png")
+                cv2.imwrite(filename, frame)
+                print(f"Скриншот сохранён: {filename}")
+
+        # Показ видео с наложением
+        results.render()  # Отрисовка предсказаний на изображении
+        cv2.imshow("Camera", frame)
+
+        # Нажмите 'q', чтобы выйти
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Завершение работы
+    cap.release()
+    cv2.destroyAllWindows()
+    print("Работа завершена.")
+
+if __name__ == "__main__":
+    main()
